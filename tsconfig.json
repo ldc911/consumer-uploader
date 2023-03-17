@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "lib": [
+      "es6"
+    ],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "declaration": true,
+    "pretty": true,
+    "moduleResolution": "node",
+    "outDir": "./build",
+    /* Modules */
+    "module": "commonjs", /* Specify what module code is generated. */
+  },
+}
