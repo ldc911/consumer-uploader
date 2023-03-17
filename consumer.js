@@ -8,21 +8,37 @@ const wss = new WebSocketServer({
   host: "localhost",
   port: 8080,
 });
-
-wss.broadcast = function broadcast(data) {
-  wss.clients.forEach(function each(client) {
-    if (client.readyState == WebSocket.OPEN && data != undefined)
-      client.send(data);
-  });
-};
-
+let rooms = {};
 wss.on("connection", function connection(ws) {
   ws.on("error", console.error);
 
   ws.on("message", function incoming(data) {
-    // Broadcast to everyone else.
-    wss.broadcast(data);
+    const obj = JSON.parse(data);
+    const type = obj.type;
+    const params = obj.params;
+    switch (type) {
+      case "create":
+        create(params);
+        break;
+      case "response":
+        response(params);
+        break;
+      default:
+        console.warn(`Type: ${type} unknown`);
+        break;
+    }
   });
+  function create(params) {
+    const room = params.room;
+    rooms[room] = [ws];
+    ws["room"] = room;
+  }
+  function response(params) {
+    const room = params.room;
+    const data = params;
+    console.log(params);
+    rooms[room].forEach((cl) => cl.send(JSON.stringify(data)));
+  }
 });
 
 const ws = new WebSocket("ws://localhost:8080");
@@ -62,55 +78,36 @@ amqp.connect("amqp://localhost", (error0, connection) => {
       const describeImage = async () => {
         const response = await axios(config);
         const { data } = response;
-        console.log(data);
-        // Initialiser l'objet pour stocker la somme et le nombre d'occurrences de chaque label
-        let labelStats = {};
 
-        // Boucle pour parcourir chaque élément du tableau
+        let labelStats = {};
         for (let prediction of data.predictions) {
-          // Vérifier si le label est déjà présent dans l'objet
           if (prediction.label in labelStats) {
-            // Ajouter la confiance à la somme existante
             labelStats[prediction.label].sumConfidence += prediction.confidence;
-            // Incrémenter le nombre d'occurrences existantes
             labelStats[prediction.label].count++;
+            labelStats[prediction.label].averageConfidence =
+              labelStats[prediction.label].sumConfidence /
+              labelStats[prediction.label].count;
           } else {
-            // Ajouter le label à l'objet avec une somme et un nombre d'occurrences initial de 1
             labelStats[prediction.label] = {
               sumConfidence: prediction.confidence,
               count: 1,
+              averageConfidence: prediction.confidence,
             };
           }
         }
 
-        // Créer un tableau pour stocker les résultats
-        let labelArray = [];
-
-        // Boucle pour parcourir chaque label dans l'objet
-        for (let label in labelStats) {
-          // Créer un objet pour stocker les informations du label
-          let labelObj = {};
-
-          // Ajouter le nom du label
-          labelObj.label = label;
-
-          // Ajouter le nombre d'occurrences du label
-          labelObj.count = labelStats[label].count;
-
-          // Ajouter la moyenne de confiance du label
-          labelObj.averageConfidence =
-            labelStats[label].sumConfidence / labelStats[label].count;
-
-          // Ajouter l'objet du label au tableau des résultats
-          labelArray.push(labelObj);
-        }
-
         // Créer l'objet final avec une clé "result" pour les résultats
-        let finalObj = { result: labelArray, fileId: encodedImage.fileId };
+        let finalObj = {
+          type: "response",
+          params: {
+            room: encodedImage.wsRoom,
+            result: labelStats,
+            fileId: encodedImage.fileId,
+            path: encodedImage.imagePath,
+          },
+        };
 
         // Afficher les résultats
-        console.log(finalObj);
-
         const resp = JSON.stringify(finalObj);
 
         ws.send(resp);
